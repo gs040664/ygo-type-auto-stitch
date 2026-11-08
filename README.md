@@ -29,13 +29,22 @@
 
 純 HTML/CSS/JavaScript Canvas，輔以可選 Python 標準函式庫本機 HTTP 代理。中文字形繁簡轉換採用 [opencc-js](https://github.com/nk2028/opencc-js) 公開 CDN，CDN 無法連線時採簡易替代表。卡名資料來自百鴿公開 API；卡圖來自百鴿指定的圖片 CDN。
 
-## GitHub 上架與部署
+## GitHub Pages 網頁版部署
 
-建議儲存庫名稱：`ygo-type-auto-stitch`。原始程式碼包含 `index.html`、`server.py` 與啟動器。請**不要上傳**本機 `.cache/` 的卡片資料／圖片、`__pycache__/` 或匯出 PNG；已提供 `.gitignore`。
+預計網址：**https://gs040664.github.io/ygo-type-auto-stitch/**
 
-將資料夾推送至 GitHub 後，可依需求選擇：
+已加入 `.github/workflows/deploy-pages.yml`，以 GitHub Actions 自動部署 `index.html` 靜態網頁。
+只會將 `index.html` 發布，不會公開 `server.py`、本機快取或其餘專案檔案。
 
-- **GitHub 程式碼專案**：直接瀏覽、管理原始碼；下載 ZIP 或 clone 後以 Python 啟動，具有可靠度較高的本機代理與完整卡片資料搜尋。
-- **GitHub Pages 靜態預覽**：專案設為公開且帳號方案支援 Pages 時，在 Settings → Pages 啟用 Deploy from a branch，選擇 `main` 和 `/ (root)`。Pages 會直接服務 `index.html`，**不會**執行 `server.py`。搜尋、圖片載入及 PNG 匯出依賴第三方網站的 CORS 設定，不保證在 Pages 上都能使用。
+> **需先由儲存庫管理員啟用 Pages**：
+>
+> 1. 開啟 [GitHub Pages 設定](https://github.com/gs040664/ygo-type-auto-stitch/settings/pages)。
+> 2. 在 **Build and deployment → Source** 選 **GitHub Actions**。
+> 3. 如帳號為 GitHub Free，儲存庫必須先在 **Settings → General → Danger Zone → Change repository visibility** 切換為 Public；GitHub Pro 等付費方案可用 Private 儲存庫部署 Pages，但網站本身通常仍會公開。
+> 4. 前往 **Actions → Deploy YGO TYPE to GitHub Pages → Run workflow**（如果先前 workflow 因未啟用 Pages 而失敗），確認成功後再瀏覽網站。
 
-要讓公開網站穩定取得圖片與匯出 PNG，需另部署支援 Python 的後端或提供合法的可跨網域卡圖來源。這個專案不含卡圖素材，僅透過第三方服務按需讀取。
+GitHub Pages 是純靜態環境，**不會執行本機的 `server.py`**。瀏覽器直接連百鴿 API 與卡圖 CDN；第三方 API 或圖片跨網域（CORS）設定可能造成卡片讀取或 PNG 匯出失敗。需要較完整資料搜尋與圖片代理時，使用前述本機 Python 版。
+
+## 著作權及資料來源
+
+這是非官方粉絲創作工具，與 KONAMI 無關；卡圖著作權歸原權利人。請遵守百鴿 API 及圖片 CDN 的使用規範，避免批量抓取。
