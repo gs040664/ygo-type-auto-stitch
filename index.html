@@ -54,7 +54,7 @@ textarea{border:1px solid #454b58;background:#090b10;color:#fff;border-radius:11
     <div class="setting-hint">設定會在下次搜尋時套用。關閉「優先使用不同卡片」可優先從同一張卡取字，保留同一張卡的字型。</div>
   </section>
   <section class="section"><div class="section-label"><span><span class="section-num">03</span>資料與字型</span></div>
-    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。預設整張使用能匹配最多字元的版本。同分時依序選日文 OCG、簡中 OCG、英文 TCG。</div>
+    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。日文 OCG 可配對日本漢字字形，例如來 → 来。預設整張使用能匹配最多字元的版本，同分時優先日文 OCG。</div>
   </section>
   <div class="side-note">非官方粉絲創作工具，與 KONAMI 無關。卡片圖像著作權歸原權利人。資料來源：<a href="https://ygocdb.com/api" target="_blank" rel="noopener noreferrer">百鴿 API</a>。建議僅作個人非商業用途。需要連線才能取得卡圖。</div>
 </div></aside>
@@ -66,6 +66,7 @@ textarea{border:1px solid #454b58;background:#090b10;color:#fff;border-radius:11
  <div class="footline"><span>YGO TYPE · INDEPENDENT FAN TOOL</span><span>Designed for manual refinement, automated by default.</span></div>
  </div></main>
 </div>
+<script src="jp-variants.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
@@ -104,7 +105,14 @@ function getIndex(){
  return indexTask;
 }
 function candidatesFor(index,e){
- return (index.get(matchKey(e.char))||[])
+ const key=matchKey(e.char);
+ const matches=[...(index.get(key)||[])];
+ const variants=new Set((jpVariants.get(key)||[]).map(matchKey));
+ variants.delete(key);
+ for(const variant of variants){
+   matches.push(...(index.get(variant)||[]).filter(item=>item.edition==='jp'));
+ }
+ return matches
    .filter(item=>(!e.start||item.at===0)&&(!e.end||item.at===item.length-1))
    .sort((a,b)=>editionOrder.indexOf(a.edition)-editionOrder.indexOf(b.edition)
      ||(a.letter!==e.char)-(b.letter!==e.char)
@@ -370,7 +378,7 @@ function renderTiles(){
  const item=current(e),missing=!e.space&&!item&&!e.uploaded;
  if(e.space)return `<article class="tile"><div class="tile-top"><div class="character">␣</div><div class="tile-info"><strong>間隔字元 #${i+1}</strong><span>保留空隙、不使用卡片</span></div></div></article>`;
  return `<article class="tile ${missing?'missing':''}" data-index="${i}">
-   <div class="tile-top"><div class="character">${esc(e.char)}</div><div class="tile-info"><strong>字元 ${String(i+1).padStart(2,'0')}</strong><span>${missing?'找不到直接符合的卡名':`${e.options.length} 個卡名位置可選`}</span></div></div>
+   <div class="tile-top"><div class="character">${esc(e.char)}</div><div class="tile-info"><strong>字元 ${String(i+1).padStart(2,'0')}${item&&!e.uploaded&&item.letter!==e.char?` · 卡面字「${esc(item.letter)}」`:''}</strong><span>${missing?'找不到直接符合的卡名':`${e.options.length} 個卡名位置可選`}</span></div></div>
    ${(item||e.uploaded)?`<div class="tile-card">${e.image?`<img class="thumb" src="${esc(e.image.src)}" alt="${esc(e.uploaded?'自選卡圖':item.name)}">`: ''}<div class="card-meta"><div class="source">${esc(e.uploaded?'自選圖':editions[item.edition])}</div>${e.uploaded?'':`<div class="name">${esc(item.name)}</div><div class="id mono">ID ${item.id}</div>`}</div></div>`:`<p class="empty-chip">沒有找到符合條件的「${esc(e.char)}」卡名，可自行上傳一張含字的卡圖。</p>`}
    <div class="tile-controls"><div class="tile-row"><span class="mini">卡片 ${item?e.chosen+1:0} / ${e.options.length}</span><div class="stepper"><button data-act="prev" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="上一張">◀</button><button data-act="next" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="下一張">下一張 ▶</button><label class="upload-label" tabindex="0">上傳<input class="file-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-upload="${i}"></label></div></div>
    <div class="mini" data-crop="${i}" ${state.style==='auto'?'':'hidden'}></div>

@@ -67,6 +67,10 @@ class Handler(BaseHTTPRequestHandler):
         path=urlparse(self.path); q=parse_qs(path.query)
         if path.path in ('/','/index.html'):
             return self.send(200,(ROOT/'index.html').read_bytes(),'text/html; charset=utf-8')
+        if path.path=='/jp-variants.js':
+            return self.send(200,(ROOT/'jp-variants.js').read_bytes(),'text/javascript; charset=utf-8')
+        if path.path=='/OPENCC-LICENSE.txt':
+            return self.send(200,(ROOT/'OPENCC-LICENSE.txt').read_bytes(),'text/plain; charset=utf-8')
         if path.path=='/card-names.json':
             try:
                 return self.send(200, card_names())
