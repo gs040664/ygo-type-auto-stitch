@@ -44,16 +44,17 @@ textarea{border:1px solid #454b58;background:#090b10;color:#fff;border-radius:11
   <section class="section"><div class="section-label"><span><span class="section-num">02</span>拼貼設定</span></div>
     <div class="mini" style="margin:10px 0 7px">拼貼風格</div>
     <div class="segment" id="styleGroup"><button data-style="uniform" class="active">等寬切片</button><button data-style="edge">首尾加寬</button></div>
-    <div class="range-row"><label for="sliceWidth">每片寬度</label><output id="sliceVal">52 px</output></div><input id="sliceWidth" type="range" min="26" max="125" value="52" step="1">
+    <div class="range-row"><label for="sliceWidth">切片目標寬度</label><output id="sliceVal">52 px</output></div><input id="sliceWidth" type="range" min="26" max="125" value="52" step="1">
     <div class="range-row"><label for="zoom">匯出解析度</label><output id="zoomVal">1.5×</output></div><input id="zoom" type="range" min="1" max="3" value="1.5" step="0.5">
     <div class="toggle-row"><label for="seams">顯示切片接縫</label><input type="checkbox" class="toggle" id="seams"></div>
     <div class="toggle-row"><label for="avoidRepeat">優先使用不同卡片</label><input type="checkbox" class="toggle" id="avoidRepeat" checked></div>
     <div class="toggle-row"><label for="allowPrefix">允許首字前有其他字</label><input type="checkbox" class="toggle" id="allowPrefix"></div>
     <div class="toggle-row"><label for="allowSuffix">允許尾字後有其他字</label><input type="checkbox" class="toggle" id="allowSuffix"></div>
-    <div class="setting-hint">首尾條件在下次搜尋時套用。裁切位置可在下方逐張微調。</div>
+    <div class="toggle-row"><label for="sameEdition">整張使用同一版本</label><input type="checkbox" class="toggle" id="sameEdition" checked></div>
+    <div class="setting-hint">設定會在下次搜尋時套用。關閉「優先使用不同卡片」可優先從同一張卡取字，保留同一張卡的字型。</div>
   </section>
   <section class="section"><div class="section-label"><span><span class="section-num">03</span>資料與字型</span></div>
-    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。優先使用日文 OCG 卡圖，其次為簡中 OCG、英文 TCG。依卡面實際印出的卡名裁切，找不到對應字時會標記。</div>
+    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。預設整張使用能匹配最多字元的版本。同分時依序選日文 OCG、簡中 OCG、英文 TCG。</div>
   </section>
   <div class="side-note">非官方粉絲創作工具，與 KONAMI 無關。卡片圖像著作權歸原權利人。資料來源：<a href="https://ygocdb.com/api" target="_blank" rel="noopener noreferrer">百鴿 API</a>。建議僅作個人非商業用途。需要連線才能取得卡圖。</div>
 </div></aside>
@@ -68,7 +69,7 @@ textarea{border:1px solid #454b58;background:#090b10;color:#fff;border-radius:11
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const state={entries:[],style:'uniform',width:52,scale:1.5,seams:false,busy:false,run:0,imgCache:new Map(),phrase:''};
+const state={entries:[],style:'uniform',width:52,scale:1.5,seams:false,busy:false,run:0,imgCache:new Map(),phrase:'',edition:null};
 const isLocal=['127.0.0.1','localhost'].includes(location.hostname)&&location.port==='8765';
 const editions={jp:'日文 OCG',sc:'簡中 OCG',en:'英文 TCG'};
 const editionOrder=Object.keys(editions);
@@ -109,6 +110,15 @@ function candidatesFor(index,e){
      ||(a.letter!==e.char)-(b.letter!==e.char)
      ||a.length-b.length||a.at-b.at);
 }
+function chooseEdition(entries){
+ const coverage=new Map(editionOrder.map(edition=>[edition,0]));
+ for(const e of entries){
+   for(const edition of new Set(e.options.map(item=>item.edition))){
+     coverage.set(edition,coverage.get(edition)+1);
+   }
+ }
+ return editionOrder.reduce((best,edition)=>coverage.get(edition)>coverage.get(best)?edition:best);
+}
 function setStatus(msg,error=false){$('status').style.display=msg?'block':'none';$('status').textContent=msg;$('status').classList.toggle('error',error)}
 function setBusy(b){state.busy=b;$('generate').disabled=b;$('generate').innerHTML=b?'<span class="spinning" style="display:inline-block">◌</span> 正在尋找符合卡名的圖片…':'<span class="glyph">✦</span><span>自動搜尋並拼接</span><span aria-hidden="true">↗</span>';$('progressWrap').style.display=b?'block':'none'}
 function progress(done,total){$('progress').style.width=Math.round(done/Math.max(1,total)*100)+'%';}
@@ -119,7 +129,7 @@ async function generate(){
  const run=++state.run;
  const last=chars.findLastIndex(c=>!isPunctuation(c));
  const allowPrefix=$('allowPrefix').checked,allowSuffix=$('allowSuffix').checked;
- const avoidRepeat=$('avoidRepeat').checked;
+ const avoidRepeat=$('avoidRepeat').checked,sameEdition=$('sameEdition').checked;
  state.phrase=chars.join('');
  state.entries=[];
  renderTiles();draw();
@@ -127,18 +137,33 @@ async function generate(){
  try{
    const index=await getIndex();
    if(run!==state.run)return;
-   const used=new Set();
    const entries=chars.map((char,i)=>{
      const e={char,space:isPunctuation(char),start:i===first&&!allowPrefix,end:i===last&&!allowSuffix,dx:0,chosen:0,image:null,options:[]};
-     if(e.space)return e;
-     e.options=candidatesFor(index,e);
+     if(!e.space)e.options=candidatesFor(index,e);
+     return e;
+   });
+   const edition=sameEdition?chooseEdition(entries):null;
+   const sharedCards=new Map();
+   for(const e of entries){
+     if(edition)e.options=e.options.filter(item=>item.edition===edition);
+     if(edition&&!avoidRepeat){
+       for(const id of new Set(e.options.map(item=>item.id))){
+         sharedCards.set(id,(sharedCards.get(id)||0)+1);
+       }
+     }
+   }
+   const used=new Set();
+   for(const e of entries){
+     if(e.space)continue;
+     if(sharedCards.size){
+       e.options.sort((a,b)=>sharedCards.get(b.id)-sharedCards.get(a.id)||a.length-b.length||a.id-b.id);
+     }
      if(avoidRepeat){
        const preferred=e.options.findIndex(item=>item.edition===e.options[0].edition&&!used.has(item.id));
        if(preferred>=0)e.chosen=preferred;
      }
      if(current(e))used.add(current(e).id);
-     return e;
-   });
+   }
    let done=0;
    // Each slice loads independently. Repeated URLs share an in-flight request.
    await Promise.all(entries.map(async e=>{
@@ -147,9 +172,11 @@ async function generate(){
    }));
    if(run!==state.run)return;
    state.entries=entries;
+   state.edition=edition;
    const unmatched=entries.filter(e=>!e.space&&!e.image).length;
    const limited=[...$('phrase').value.trim()].length>24?'已使用前 24 個字元。':'';
-   setStatus(limited+(unmatched?`有 ${unmatched} 個字找不到符合條件的卡圖，可更換候選卡或上傳圖片。`:'拼貼完成。可複製成品圖、下載 PNG 或繼續微調。'),Boolean(unmatched));
+   const source=edition?`本次自動配對統一使用${editions[edition]}。 `:'';
+   setStatus(limited+source+(unmatched?`有 ${unmatched} 個字找不到符合條件的卡圖，可更換候選卡或上傳圖片。${edition?'也可取消同一版本限制後重新搜尋。':''}`:'拼貼完成。可複製成品圖、下載 PNG 或繼續微調。'),Boolean(unmatched));
    renderTiles();draw();
  }catch(e){
    if(run===state.run)setStatus('讀取卡名索引失敗，請稍後重試。直接開啟 HTML 時，請改用公開網頁或本機啟動器。',true);
@@ -208,22 +235,83 @@ async function ensureImage(e,auto=false){
    }
  }
 }
-function geom(e,img){
+const titleBounds=new WeakMap();
+function detectTitle(img,length){
+ // Sample the main title row below the ruby text and to the left of the attribute icon.
+ const sample=document.createElement('canvas');
+ const W=680,H=Math.round(img.naturalHeight*W/img.naturalWidth);
+ const x0=Math.round(W*.077),y0=Math.round(H*.059);
+ sample.width=Math.round(W*.825)-x0;
+ sample.height=Math.round(H*.10)-y0;
+ const ctx=sample.getContext('2d',{willReadFrequently:true});
+ ctx.drawImage(img,-x0,-y0,W,H);
+ const {width,height}=sample;
+ const pixels=ctx.getImageData(0,0,width,height).data;
+ const dark=new Uint8Array(width),light=new Uint8Array(width),gold=new Uint8Array(width);
+ for(let y=0;y<height;y++){
+   for(let x=0;x<width;x++){
+     const i=(y*width+x)*4;
+     const r=pixels[i],g=pixels[i+1],b=pixels[i+2];
+     if(Math.max(r,g,b)<75)dark[x]++;
+     if(Math.min(r,g,b)>200)light[x]++;
+     if(r>200&&g>155&&b<100&&g-b>85)gold[x]++;
+   }
+ }
+ for(const gap of [7,5,10]){
+   for(const ink of [dark,light,gold]){
+     const groups=[];
+     for(let x=0;x<width;x++){
+       if(ink[x]<2)continue;
+       const last=groups.at(-1);
+       if(last&&x-last.right<=gap)last.right=x;
+       else groups.push({left:x,right:x});
+     }
+     const glyphs=groups.filter(g=>g.right-g.left>=3);
+     const maxWidth=Math.min(63,Math.ceil(width/length*1.35));
+     if(glyphs.length!==length||glyphs[0].left>28||
+       glyphs.some(g=>g.right-g.left>maxWidth||g.right-g.left<6))continue;
+     if(glyphs.some((g,i)=>i>0&&g.left-glyphs[i-1].right>38))continue;
+     return glyphs.map(g=>({left:(x0+g.left)/W,right:(x0+g.right+1)/W}));
+   }
+ }
+ return null;
+}
+function geom(e,img,h,edge){
+ const W=img.naturalWidth,H=img.naturalHeight;
  const item=current(e);
  const len=item?.length||1,ix=item?.at||0;
- const W=img?.naturalWidth||400,H=img?.naturalHeight||580;
- const glyph=Math.min(W*.056,W*.78/len);
- const start=W*.08;const cx=start+glyph*(ix+.5)+e.dx/400*W;
- const stripSrc=Math.min(W*.11,Math.max(glyph*1.12,W*.058));
- return {W,H,cx,stripSrc};
+ // Use ink boundaries when the number of visible groups agrees with the printed name.
+ // Mixed-width and ornamental names retain the adjustable estimate.
+ if(!titleBounds.has(img)&&!e.uploaded){
+   let bounds=null;
+   if(item&&/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u.test(item.name)){
+     try{bounds=detectTitle(img,len)}catch{/* Keep the geometric estimate. */}
+   }
+   titleBounds.set(img,bounds);
+ }
+ const glyphs=e.uploaded?null:titleBounds.get(img);
+ const pitch=Math.min(.076,.74/len);
+ const glyph=glyphs?.[ix];
+ const center=glyph?(glyph.left+glyph.right)/2:.086+pitch*(ix+.5);
+ const prev=glyphs?.[ix-1],next=glyphs?.[ix+1];
+ const target=state.width*(edge?1.75:1)*H/h/W;
+ const radius=Math.max(target/2,glyph?(glyph.right-glyph.left)/2+.002:0);
+ const left=Math.max(center-radius,prev?prev.right+.002:ix===0?0:center-pitch/2);
+ const right=Math.min(center+radius,next?next.left-.002:ix===len-1?1:center+pitch/2);
+ const cropWidth=Math.max(1,(right-left)*W);
+ const sx=Math.max(0,Math.min((left+e.dx/400)*W,W-cropWidth));
+ return {sx,cropWidth,H,width:cropWidth*h/H};
 }
 function draw(){
  const entries=state.entries;const canvas=$('canvas');const empty=$('empty');
  $('copy').disabled=true;
- if(!entries.length){empty.hidden=false;canvas.hidden=true;$('download').disabled=true;$('canvasStatus').textContent='等待輸入';$('dimensions').textContent='— × —';$('charInfo').textContent='0 CHARACTERS';$('matchInfo').textContent='0 / 0 已匹配';$('matchInfo').className='pill good';return;}
+ if(!entries.length){empty.hidden=false;canvas.hidden=true;$('download').disabled=true;$('canvasStatus').textContent='等待輸入';$('dimensions').textContent='— × —';$('charInfo').textContent='0 CHARACTERS';$('matchInfo').textContent='0 / 0 已匹配';$('matchInfo').className='pill good';$('stageHint').textContent='自動搜尋 · 手動可調';return;}
  empty.hidden=true;canvas.hidden=false;const sc=state.scale,unit=state.width;
- const widths=entries.map((e,i)=>e.space?Math.round(unit*.4):Math.round(unit*(state.style==='edge'&&(i===0||i===entries.length-1)?1.75:1)));
- const w=widths.reduce((a,b)=>a+b,0),h=580;const pxW=Math.ceil(w*sc),pxH=Math.ceil(h*sc);
+ const h=580;
+ const first=entries.findIndex(e=>!e.space),last=entries.findLastIndex(e=>!e.space);
+ const slices=entries.map((e,i)=>e.image?geom(e,e.image,h,state.style==='edge'&&(i===first||i===last)):null);
+ const widths=entries.map((e,i)=>slices[i]?.width||(e.space?Math.round(unit*.4):unit));
+ const w=widths.reduce((a,b)=>a+b,0);const pxW=Math.ceil(w*sc),pxH=Math.ceil(h*sc);
  canvas.width=pxW;canvas.height=pxH;canvas.style.height=`${h}px`;canvas.style.width=`${w}px`;
  const ctx=canvas.getContext('2d');ctx.scale(sc,sc);ctx.fillStyle='#13161d';ctx.fillRect(0,0,w,h);
  let x=0,loaded=0,total=0;
@@ -233,9 +321,8 @@ function draw(){
    const img=e.image;
    if(img){
      loaded++;
-     const g=geom(e,img),sy=0,srcHeight=g.H;
-     const maxCrop=Math.min(g.stripSrc,g.W),sx=Math.max(0,Math.min(g.cx-maxCrop/2,g.W-maxCrop));
-     try{ctx.drawImage(img,sx,sy,maxCrop,srcHeight,x,0,tw,h)}catch(err){console.warn(err)}
+     const {sx,cropWidth,H}=slices[i];
+     ctx.drawImage(img,sx,0,cropWidth,H,x,0,tw,h);
      if(state.seams){ctx.strokeStyle='rgba(255,255,255,.42)';ctx.lineWidth=1;ctx.strokeRect(x+.5,.5,tw-1,h-1);}
    }else{
      ctx.fillStyle='#40252a';ctx.fillRect(x,0,tw,h);ctx.fillStyle='#f5b2a7';ctx.font='700 20px "Noto Sans TC",sans-serif';ctx.textAlign='center';ctx.fillText(e.char,x+tw/2,45);ctx.save();ctx.translate(x+tw/2,290);ctx.rotate(-Math.PI/2);ctx.fillStyle='#ca9e9d';ctx.font='12px system-ui';ctx.fillText('找不到卡圖',0,0);ctx.restore();
@@ -245,17 +332,20 @@ function draw(){
  $('dimensions').textContent=`${pxW} × ${pxH} PX`;$('charInfo').textContent=`${entries.length} CHARACTERS`;
  $('matchInfo').textContent=`${loaded} / ${total} 已匹配`;$('matchInfo').className=loaded===total?'pill good':'pill bad';
  $('canvasStatus').textContent=loaded===total?'已完成':'需要調整';$('download').disabled=!loaded;$('copy').disabled=!loaded||!navigator.clipboard||!window.ClipboardItem;
+ const sources=new Set(entries.filter(e=>e.image&&!e.uploaded).map(e=>editions[current(e).edition]));
+ if(entries.some(e=>e.uploaded))sources.add('含自選圖');
+ $('stageHint').textContent=[...sources].join(' · ')||editions[state.edition]||'自動搜尋 · 手動可調';
  $('resultNote').textContent=`PNG / ${state.scale}×`;
 }
 function renderTiles(){
  const container=$('tiles');const entries=state.entries; $('tileCount').textContent=`${entries.length} ITEMS`;
  if(!entries.length){container.innerHTML='<div style="color:#7e8796;font-size:12px;padding:12px 0">尚未產生卡片。搜尋後可逐張編輯。</div>';return}
  container.innerHTML=entries.map((e,i)=>{
- const item=current(e),missing=!e.space&&!item;
+ const item=current(e),missing=!e.space&&!item&&!e.uploaded;
  if(e.space)return `<article class="tile"><div class="tile-top"><div class="character">␣</div><div class="tile-info"><strong>間隔字元 #${i+1}</strong><span>保留空隙、不使用卡片</span></div></div></article>`;
  return `<article class="tile ${missing?'missing':''}" data-index="${i}">
    <div class="tile-top"><div class="character">${esc(e.char)}</div><div class="tile-info"><strong>字元 ${String(i+1).padStart(2,'0')}</strong><span>${missing?'找不到直接符合的卡名':`${e.options.length} 個卡名位置可選`}</span></div></div>
-   ${item?`<div class="tile-card">${e.image?`<img class="thumb" src="${esc(e.image.src)}" alt="${esc(item.name)}">`: ''}<div class="card-meta"><div class="source">${esc(editions[item.edition])}</div><div class="name">${esc(item.name)}</div><div class="id mono">ID ${item.id}${e.uploaded?' · CUSTOM':''}</div></div></div>`:`<p class="empty-chip">沒有找到符合條件的「${esc(e.char)}」卡名，可自行上傳一張含字的卡圖。</p>`}
+   ${(item||e.uploaded)?`<div class="tile-card">${e.image?`<img class="thumb" src="${esc(e.image.src)}" alt="${esc(e.uploaded?'自選卡圖':item.name)}">`: ''}<div class="card-meta"><div class="source">${esc(e.uploaded?'自選圖':editions[item.edition])}</div>${e.uploaded?'':`<div class="name">${esc(item.name)}</div><div class="id mono">ID ${item.id}</div>`}</div></div>`:`<p class="empty-chip">沒有找到符合條件的「${esc(e.char)}」卡名，可自行上傳一張含字的卡圖。</p>`}
    <div class="tile-controls"><div class="tile-row"><span class="mini">卡片 ${item?e.chosen+1:0} / ${e.options.length}</span><div class="stepper"><button data-act="prev" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="上一張">◀</button><button data-act="next" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="下一張">下一張 ▶</button><label class="upload-label" tabindex="0">上傳<input class="file-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-upload="${i}"></label></div></div>
    <div class="offset-row"><span class="mini">裁切位移</span><input type="range" min="-260" max="260" step="1" value="${e.dx}" data-offset="${i}" aria-label="裁切位移"><span class="mini mono">${e.dx>0?'+':''}${e.dx} px</span></div></div>
  </article>`}).join('');
