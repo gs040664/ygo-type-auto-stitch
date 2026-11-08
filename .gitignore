@@ -1,0 +1,16 @@
+# Runtime files and local caches
+.cache/
+__pycache__/
+*.py[cod]
+
+# Local environment and editor artifacts
+.venv/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Locally generated image outputs
+YGO-TYPE_*.png
