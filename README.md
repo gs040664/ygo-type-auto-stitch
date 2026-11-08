@@ -4,7 +4,7 @@
 
 ## 如何啟動
 
-**推薦方式（搜尋與圖片匯出較可靠）**：安裝 Python 3 後，Windows 雙擊 `start_windows.bat`；macOS / Linux 執行 `./start_mac_linux.sh`。工具會開啟 `http://127.0.0.1:8765`，不需安裝額外的 Python 套件。需要網路連線下載百鴿卡片資料與圖片；下載內容會快取於 `.cache`。
+**推薦方式（搜尋與圖片匯出較可靠）**：安裝 Python 3 後，Windows 雙擊 `start_windows.bat`；macOS / Linux 執行 `bash start_mac_linux.sh`。工具會開啟 `http://127.0.0.1:8765`，不需安裝額外的 Python 套件。需要網路連線下載百鴿卡片資料與圖片；下載內容會快取於 `.cache`。
 
 **免安裝嘗試**：直接開啟 `index.html`。此模式直接連百鴿 API 與圖片 CDN；可能因瀏覽器跨網域限制無法匯出，遇到此問題請改用上述啟動器。
 
