@@ -48,140 +48,178 @@ textarea{border:1px solid #454b58;background:#090b10;color:#fff;border-radius:11
     <div class="range-row"><label for="zoom">匯出解析度</label><output id="zoomVal">1.5×</output></div><input id="zoom" type="range" min="1" max="3" value="1.5" step="0.5">
     <div class="toggle-row"><label for="seams">顯示切片接縫</label><input type="checkbox" class="toggle" id="seams"></div>
     <div class="toggle-row"><label for="avoidRepeat">優先使用不同卡片</label><input type="checkbox" class="toggle" id="avoidRepeat" checked></div>
-    <div class="setting-hint">字的位置會依卡名估算；若對不準，可在下方逐張移動裁切區域。</div>
+    <div class="toggle-row"><label for="allowPrefix">允許首字前有其他字</label><input type="checkbox" class="toggle" id="allowPrefix"></div>
+    <div class="toggle-row"><label for="allowSuffix">允許尾字後有其他字</label><input type="checkbox" class="toggle" id="allowSuffix"></div>
+    <div class="setting-hint">首尾條件在下次搜尋時套用。裁切位置可在下方逐張微調。</div>
   </section>
   <section class="section"><div class="section-label"><span><span class="section-num">03</span>資料與字型</span></div>
-    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。繁體中文會優先轉成簡體，以符合所載卡圖實際印出的卡名。無法找到的字會清楚標記，不會用假字冒充卡圖。</div>
+    <div class="setting-hint" style="font-size:11px;color:#acb5c4">使用「百鴿」公開卡片資料搜尋。優先使用日文 OCG 卡圖，其次為簡中 OCG、英文 TCG。依卡面實際印出的卡名裁切，找不到對應字時會標記。</div>
   </section>
   <div class="side-note">非官方粉絲創作工具，與 KONAMI 無關。卡片圖像著作權歸原權利人。資料來源：<a href="https://ygocdb.com/api" target="_blank" rel="noopener noreferrer">百鴿 API</a>。建議僅作個人非商業用途。需要連線才能取得卡圖。</div>
 </div></aside>
 <main class="main"><div class="topbar"><div class="breadcrumbs mono"><span>TOOLS</span><span style="color:#596273">/</span><strong>CARD COLLAGE</strong></div><div class="top-right"><span class="small-badge"><i class="live-dot"></i>&nbsp; WEB APP</span><span style="color:#596273;font-size:10px" class="mono">V1.0</span></div></div>
- <div class="content"><div class="hero"><div><div class="eyebrow">// LIVE PREVIEW</div><h2>拼貼工作台</h2><p>檢查、替換與微調每個字。完成後直接匯出 PNG。</p></div><div class="actions"><button class="secondary" id="reset" title="清除編輯結果">↺ 重置</button><button class="secondary" id="download" disabled>↓ 下載 PNG</button></div></div>
+ <div class="content"><div class="hero"><div><div class="eyebrow">// LIVE PREVIEW</div><h2>拼貼工作台</h2><p>檢查、替換與微調每個字。完成後直接匯出 PNG。</p></div><div class="actions"><button class="secondary" id="reset" title="清除編輯結果">↺ 重置</button><button class="secondary" id="copy" disabled>複製成品圖</button><button class="secondary" id="download" disabled>↓ 下載 PNG</button></div></div>
  <div id="status" class="status" role="status" aria-live="polite"></div><div class="progress-wrap" id="progressWrap"><div class="progress" id="progress"></div></div>
  <div class="stage"><div class="stage-toolbar"><div class="stage-left"><span class="stage-title">CANVAS</span><span class="pill" id="canvasStatus">等待輸入</span><span class="stat" id="dimensions">— × —</span></div><div class="stage-right"><span class="stat" id="charInfo">0 CHARACTERS</span></div></div><div class="stage-area" id="stage"><div class="empty" id="empty"><div class="empty-icon">▤</div><h3>畫布已就緒</h3><p>在左方輸入一句話，再按下「自動搜尋並拼接」。系統會逐字尋找卡名並自動組合畫面。</p></div><canvas id="canvas" aria-label="卡圖拼接預覽" hidden></canvas></div><div class="stage-footer"><div><span class="pill good" id="matchInfo">0 / 0 已匹配</span><span id="stageHint">自動搜尋 · 手動可調</span></div><span class="mono" id="resultNote">PNG / FULL CANVAS</span></div></div>
  <div class="lower-header"><h3>逐字卡片配對 <small id="tileCount">0 ITEMS</small></h3><small>微調位置 / 替換候選 / 自選圖檔</small></div><div class="tiles" id="tiles"><div style="color:#7e8796;font-size:12px;padding:12px 0">尚未產生卡片。搜尋後可逐張編輯。</div></div>
  <div class="footline"><span>YGO TYPE · INDEPENDENT FAN TOOL</span><span>Designed for manual refinement, automated by default.</span></div>
  </div></main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/umd/full.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const state={entries:[],style:'uniform',width:52,scale:1.5,seams:false,avoidRepeat:true,busy:false,run:0,imgCache:new Map(),searchCache:new Map()};
-const API_ROOT = (location.protocol.startsWith('http') && ['127.0.0.1','localhost'].includes(location.hostname) && location.port==='8765') ? '' : 'https://ygocdb.com';
-const isLocal=API_ROOT==='';
-const seed=[
-{id:89631139,cn_name:'青眼白龙',sc_name:'青眼白龙'},
-{id:46986414,cn_name:'黑魔导'},
-{id:74677422,cn_name:'真红眼黑龙'},
-{id:83764718,cn_name:'死者苏生'},
-{id:55144522,cn_name:'强欲之壶'},
-{id:24299458,cn_name:'禁忌的一滴'},
-{id:41420027,cn_name:'神之宣告'},
-{id:14558127,cn_name:'灰流丽'},
-{id:23434538,cn_name:'增殖的G'},
-{id:62279055,cn_name:'魔法筒'},
-{id:89631139,cn_name:'青眼白龙'}
-];
-let cnConv=null;
-function simplify(text){
- try{if(!cnConv && window.OpenCC)cnConv=OpenCC.Converter({from:'tw',to:'cn'});if(cnConv)return cnConv(text);}catch(e){console.warn('繁簡轉換字典未載入',e)}
- const pairs='龍龙 魔魔 導导 體体 麗丽 說说 萬万 與与 為为 開开 關关 見见 電电 風风 雲云 時时 間间 國国 遊游 戲戏 覺觉 愛爱 會会 讓让 無无 強强 復复 蘇苏 聖圣 變变 獨独 聲声 圖图 戰战 鬥斗 賢贤 神神 機机 殺杀 滅灭 憶忆 騎骑 馬马 鳳凤 隻只 劍剑 銀银 貓猫 線线 階阶 隊队 烏乌 燈灯 黑黑 網网 規规 力力 爾尔 痛痛'.split(' ');const map=Object.fromEntries(pairs.map(x=>[...x]));return [...text].map(c=>map[c]||c).join('');
-}
+const state={entries:[],style:'uniform',width:52,scale:1.5,seams:false,busy:false,run:0,imgCache:new Map(),phrase:''};
+const isLocal=['127.0.0.1','localhost'].includes(location.hostname)&&location.port==='8765';
+const editions={jp:'日文 OCG',sc:'簡中 OCG',en:'英文 TCG'};
+const editionOrder=Object.keys(editions);
+const cdn='https://cdn.233.momobako.com';
+let indexTask;
 function charsOf(v){return Array.from((v||'').trim()).filter(c=>c!=='\r'&&c!=='\n').slice(0,24)}
 function isPunctuation(c){return /[\s，。、！!？?：:；;（()）「」『』·・—－\-.,]/u.test(c)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
-function normalize(raw){if(!raw)return null;const id=Number(raw.id??raw.card_id);if(!Number.isInteger(id)||id<=0)return null;let names=[raw.cn_name||raw.text?.name||raw.sc_name].filter(x=>typeof x==='string'&&x.length);let name=names[0]||'';return {id,name,names:[...new Set(names)],url:raw.image_url||`https://cdn.233.momobako.com/ygopro/pics/${id}.jpg`,score:0};}
-async function searchChar(c,more=false){
- if(state.searchCache.has(c)&&!more)return state.searchCache.get(c);
- let list=[];const base=seed.map(normalize).filter(Boolean).filter(x=>x.names.some(n=>n.includes(c)));
- list.push(...base);
- // The Baige API search response has result:[{id,cn_name,...}] and wildcard CORS headers.
- let received=false;
- for(const start of (more?[0,25,50,75,100]:[0,25])){
-   try{
-     const endpoint=isLocal?`/api/search?q=${encodeURIComponent(c)}&start=${start}`:`${API_ROOT}/api/v0/?search=${encodeURIComponent(c)}&start=${start}`;
-     const res=await fetch(endpoint,{signal:AbortSignal.timeout(11000),cache:'force-cache'});
-     if(!res.ok)throw Error(`HTTP ${res.status}`);
-     const json=await res.json(); const items=Array.isArray(json.result)?json.result:(Array.isArray(json)?json:[]);
-     received=true;
-     const norm=items.map(normalize).filter(Boolean).filter(x=>x.names.some(n=>n.includes(c)));
-     list.push(...norm);
-     if(items.length<20||list.length>=24)break;
-   }catch(e){if(!received&&list.length===0)console.warn('搜尋卡片失敗',c,e);break;}
- }
- if(isLocal && (more||!list.length)){try{const res=await fetch(`/api/search-all?q=${encodeURIComponent(c)}`,{signal:AbortSignal.timeout(35000)});if(res.ok){const db=await res.json();list.push(...(db.result||[]).map(normalize).filter(Boolean).filter(x=>x.names.some(n=>n.includes(c))))}}catch(err){console.warn('完整資料庫查詢失敗',err)}}
- const unique=[...new Map(list.map(x=>[x.id,x])).values()];
- unique.sort((a,b)=>scoreCandidate(a,c)-scoreCandidate(b,c));
- if(!more)state.searchCache.set(c,unique);
- else state.searchCache.set(c,unique);
- return unique;
+const matchKey=c=>c.normalize('NFKC');
+function getIndex(){
+ if(!indexTask)indexTask=(async()=>{
+   const url=location.protocol==='file:'
+     ?'https://gs040664.github.io/ygo-type-auto-stitch/card-names.json'
+     :'card-names.json';
+   const response=await fetch(url,{signal:AbortSignal.timeout(isLocal?40000:10000)});
+   if(!response.ok)throw Error(`卡名索引 HTTP ${response.status}`);
+   const index=new Map();
+   for(const [id,jp,sc,en] of await response.json()){
+     for(const [edition,name] of Object.entries({jp,sc,en})){
+       if(!name)continue;
+       const letters=Array.from(name);
+       letters.forEach((letter,at)=>{
+         if(isPunctuation(letter))return;
+         const key=matchKey(letter);
+         if(!index.has(key))index.set(key,[]);
+         index.get(key).push({id,edition,name,letter,at,length:letters.length});
+       });
+     }
+   }
+   return index;
+ })().catch(error=>{indexTask=null;throw error});
+ return indexTask;
 }
-function scoreCandidate(item,c){
- const name=item.names.find(n=>n.includes(c))||item.name; const at=name.indexOf(c);
- return name.length*1.1+Math.abs(at-2)*.65+(at>12?8:0);
+function candidatesFor(index,e){
+ return (index.get(matchKey(e.char))||[])
+   .filter(item=>(!e.start||item.at===0)&&(!e.end||item.at===item.length-1))
+   .sort((a,b)=>editionOrder.indexOf(a.edition)-editionOrder.indexOf(b.edition)
+     ||(a.letter!==e.char)-(b.letter!==e.char)
+     ||a.length-b.length||a.at-b.at);
 }
-function pickCandidate(candidates, used){return candidates.find(item=>!used.has(item.id))||candidates[0]||null}
 function setStatus(msg,error=false){$('status').style.display=msg?'block':'none';$('status').textContent=msg;$('status').classList.toggle('error',error)}
 function setBusy(b){state.busy=b;$('generate').disabled=b;$('generate').innerHTML=b?'<span class="spinning" style="display:inline-block">◌</span> 正在尋找符合卡名的圖片…':'<span class="glyph">✦</span><span>自動搜尋並拼接</span><span aria-hidden="true">↗</span>';$('progressWrap').style.display=b?'block':'none'}
 function progress(done,total){$('progress').style.width=Math.round(done/Math.max(1,total)*100)+'%';}
 async function generate(){
- const run=++state.run;const chars=charsOf($('phrase').value);
- if(!chars.length){setStatus('請先輸入文字。',true);return}
- if([...$('phrase').value.trim()].length>24){setStatus('目前最多拼接 24 個字元，超過的部分會略過。');}
- else setStatus('');
- setBusy(true);progress(0,chars.length);state.entries=[];state.avoidRepeat=$('avoidRepeat').checked;const used=new Set();
- // Group repetitions to avoid downloading duplicate lists, but still place every character.
- let done=0;
+ const chars=charsOf($('phrase').value);
+ const first=chars.findIndex(c=>!isPunctuation(c));
+ if(first<0){setStatus('請輸入至少一個可拼接的字元。',true);return}
+ const run=++state.run;
+ const last=chars.findLastIndex(c=>!isPunctuation(c));
+ const allowPrefix=$('allowPrefix').checked,allowSuffix=$('allowSuffix').checked;
+ const avoidRepeat=$('avoidRepeat').checked;
+ state.phrase=chars.join('');
+ state.entries=[];
+ renderTiles();draw();
+ setStatus('');setBusy(true);progress(0,chars.length);
  try{
-   for(let i=0;i<chars.length;i++){
-     if(run!==state.run)return;
-     const original=chars[i],search=simplify(original);
-     if(isPunctuation(original)){state.entries.push({char:original,search,space:true,options:[],chosen:0,dx:0,image:null});}
-     else{
-       const options=await searchChar(search);
-       if(run!==state.run)return;
-       const chosen=state.avoidRepeat?Math.max(0,options.indexOf(pickCandidate(options,used))):0;
-       const item=options[chosen];if(item)used.add(item.id);
-       state.entries.push({char:original,search,space:false,options,chosen,dx:0,image:null,uploaded:null,imageError:false});
-     }
-     done++;progress(done,chars.length);renderTiles();await draw();
-   }
-   const loadResults=await Promise.allSettled(state.entries.map((e,i)=>ensureImage(e).then(()=>i)));
+   const index=await getIndex();
    if(run!==state.run)return;
-   const unmatched=state.entries.filter(e=>!e.space&&(!e.options.length||e.imageError)).length;
-   const converted=state.entries.filter(e=>!e.space&&e.char!==e.search).length;
-   if(unmatched)setStatus(`完成初步拼接。${unmatched} 個字未成功載入卡圖，請逐字調整或上傳圖檔。${converted?'其中 '+converted+' 字已嘗試轉換為簡體。':''}`,true);
-   else setStatus(`已自動完成 ${state.entries.filter(e=>!e.space).length} 個字的拼貼。${converted?'其中 '+converted+' 字使用對應簡體卡名。':''}下方可以替換卡片與微調位置。`);
-   renderTiles();await draw();
- }catch(e){console.error(e);setStatus('拼接時發生錯誤：'+e.message,true)}finally{if(run===state.run)setBusy(false)}
+   const used=new Set();
+   const entries=chars.map((char,i)=>{
+     const e={char,space:isPunctuation(char),start:i===first&&!allowPrefix,end:i===last&&!allowSuffix,dx:0,chosen:0,image:null,options:[]};
+     if(e.space)return e;
+     e.options=candidatesFor(index,e);
+     if(avoidRepeat){
+       const preferred=e.options.findIndex(item=>item.edition===e.options[0].edition&&!used.has(item.id));
+       if(preferred>=0)e.chosen=preferred;
+     }
+     if(current(e))used.add(current(e).id);
+     return e;
+   });
+   let done=0;
+   // Each slice loads independently. Repeated URLs share an in-flight request.
+   await Promise.all(entries.map(async e=>{
+     await ensureImage(e,true);
+     if(run===state.run)progress(++done,chars.length);
+   }));
+   if(run!==state.run)return;
+   state.entries=entries;
+   const unmatched=entries.filter(e=>!e.space&&!e.image).length;
+   const limited=[...$('phrase').value.trim()].length>24?'已使用前 24 個字元。':'';
+   setStatus(limited+(unmatched?`有 ${unmatched} 個字找不到符合條件的卡圖，可更換候選卡或上傳圖片。`:'拼貼完成。可複製成品圖、下載 PNG 或繼續微調。'),Boolean(unmatched));
+   renderTiles();draw();
+ }catch(e){
+   if(run===state.run)setStatus('讀取卡名索引失敗，請稍後重試。直接開啟 HTML 時，請改用公開網頁或本機啟動器。',true);
+   console.error(e);
+ }finally{if(run===state.run)setBusy(false)}
 }
-function current(e){return e.options?.[e.chosen]||null}
-function imageURL(item){return (isLocal&&item?.id&&!item.custom)?`/api/image?id=${item.id}`:item?.url}
+function current(e){return e.options[e.chosen]}
+function imageURL(item){
+ const path=`/ygoimg/${item.edition}/${item.id}.webp`;
+ return `https://images.weserv.nl/?url=${encodeURIComponent(cdn+path)}`;
+}
 function loadImage(url){
- if(!url)return Promise.reject(Error('沒有圖片網址'));
  if(state.imgCache.has(url))return state.imgCache.get(url);
- const task=new Promise((resolve,reject)=>{const img=new Image();img.crossOrigin='anonymous';img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('圖片連線失敗或來源不允許跨來源匯出'));img.src=url;});
- state.imgCache.set(url,task);return task;
+ const task=new Promise((resolve,reject)=>{
+   const img=new Image();
+   const timer=setTimeout(()=>{img.removeAttribute('src');reject(Error('圖片載入逾時'))},7000);
+   img.crossOrigin='anonymous';
+   img.onload=()=>{clearTimeout(timer);resolve(img)};
+   img.onerror=()=>{clearTimeout(timer);reject(Error('圖片載入失敗'))};
+   img.src=url;
+ });
+ state.imgCache.set(url,task);
+ task.catch(()=>state.imgCache.delete(url));
+ return task;
 }
-async function ensureImage(e){
- if(!e||e.space)return null;
- if(e.uploaded){e.image=e.uploaded;e.imageError=false;return e.image}
- const item=current(e);if(!item){e.image=null;e.imageError=true;return null}
- try{e.image=await loadImage(imageURL(item));e.imageError=false;return e.image}catch(err){e.image=null;e.imageError=true;console.warn(err);return null}
+async function ensureImage(e,auto=false){
+ if(e.space||e.uploaded)return;
+ const selected=e.chosen;
+ const primary=current(e);
+ if(!primary)return;
+ const attempts=[selected];
+ if(auto){
+   for(const edition of editionOrder){
+     const ids=new Set(edition===primary.edition?[primary.id]:[]);
+     for(const [i,item] of e.options.entries()){
+       if(ids.size>=3)break;
+       if(item.edition!==edition||ids.has(item.id))continue;
+       ids.add(item.id);
+       attempts.push(i);
+     }
+   }
+ }
+ for(const i of attempts){
+   try{
+     const item=e.options[i];
+     const publicURL=imageURL(item);
+     const image=await (isLocal
+       ? loadImage(`/api/image?id=${item.id}&edition=${item.edition}`).catch(()=>loadImage(publicURL))
+       : loadImage(publicURL));
+     if(e.chosen!==selected||e.uploaded)return;
+     e.chosen=i;
+     e.image=image;
+     return;
+   }catch{
+     if(e.chosen!==selected||e.uploaded)return;
+   }
+ }
 }
-function geom(e,i,img){
- const nm=current(e)?.names.find(s=>s.includes(e.search))||current(e)?.name||e.search;
- const len=Array.from(nm).length||1;const ix=Math.max(0,Array.from(nm).indexOf(e.search));
+function geom(e,img){
+ const item=current(e);
+ const len=item?.length||1,ix=item?.at||0;
  const W=img?.naturalWidth||400,H=img?.naturalHeight||580;
  const glyph=Math.min(W*.056,W*.78/len);
  const start=W*.08;const cx=start+glyph*(ix+.5)+e.dx/400*W;
  const stripSrc=Math.min(W*.11,Math.max(glyph*1.12,W*.058));
  return {W,H,cx,stripSrc};
 }
-async function draw(){
+function draw(){
  const entries=state.entries;const canvas=$('canvas');const empty=$('empty');
+ $('copy').disabled=true;
  if(!entries.length){empty.hidden=false;canvas.hidden=true;$('download').disabled=true;$('canvasStatus').textContent='等待輸入';$('dimensions').textContent='— × —';$('charInfo').textContent='0 CHARACTERS';$('matchInfo').textContent='0 / 0 已匹配';$('matchInfo').className='pill good';return;}
  empty.hidden=true;canvas.hidden=false;const sc=state.scale,unit=state.width;
  const widths=entries.map((e,i)=>e.space?Math.round(unit*.4):Math.round(unit*(state.style==='edge'&&(i===0||i===entries.length-1)?1.75:1)));
@@ -192,11 +230,10 @@ async function draw(){
  for(let i=0;i<entries.length;i++){
    const e=entries[i],tw=widths[i];if(e.space){ctx.fillStyle='#11141b';ctx.fillRect(x,0,tw,h);x+=tw;continue}
    total++;
-   if(!e.image)await ensureImage(e);
    const img=e.image;
    if(img){
      loaded++;
-     const g=geom(e,i,img),sy=0,srcHeight=g.H;
+     const g=geom(e,img),sy=0,srcHeight=g.H;
      const maxCrop=Math.min(g.stripSrc,g.W),sx=Math.max(0,Math.min(g.cx-maxCrop/2,g.W-maxCrop));
      try{ctx.drawImage(img,sx,sy,maxCrop,srcHeight,x,0,tw,h)}catch(err){console.warn(err)}
      if(state.seams){ctx.strokeStyle='rgba(255,255,255,.42)';ctx.lineWidth=1;ctx.strokeRect(x+.5,.5,tw-1,h-1);}
@@ -207,7 +244,7 @@ async function draw(){
  }
  $('dimensions').textContent=`${pxW} × ${pxH} PX`;$('charInfo').textContent=`${entries.length} CHARACTERS`;
  $('matchInfo').textContent=`${loaded} / ${total} 已匹配`;$('matchInfo').className=loaded===total?'pill good':'pill bad';
- $('canvasStatus').textContent=loaded===total?'已完成':'需要調整';$('download').disabled=!loaded;
+ $('canvasStatus').textContent=loaded===total?'已完成':'需要調整';$('download').disabled=!loaded;$('copy').disabled=!loaded||!navigator.clipboard||!window.ClipboardItem;
  $('resultNote').textContent=`PNG / ${state.scale}×`;
 }
 function renderTiles(){
@@ -217,20 +254,30 @@ function renderTiles(){
  const item=current(e),missing=!e.space&&!item;
  if(e.space)return `<article class="tile"><div class="tile-top"><div class="character">␣</div><div class="tile-info"><strong>間隔字元 #${i+1}</strong><span>保留空隙、不使用卡片</span></div></div></article>`;
  return `<article class="tile ${missing?'missing':''}" data-index="${i}">
-   <div class="tile-top"><div class="character">${esc(e.char)}</div><div class="tile-info"><strong>字元 ${String(i+1).padStart(2,'0')} ${e.char!==e.search?'· → '+esc(e.search):''}</strong><span>${missing?'找不到直接符合的卡名':`${e.options.length} 張候選卡片可用`}</span></div></div>
-   ${item?`<div class="tile-card"><img class="thumb" src="${esc(imageURL(item))}" alt="${esc(item.name)}" loading="lazy"><div class="card-meta"><div class="source">YGOCDB / BAIGE</div><div class="name">${esc(item.name)}</div><div class="id mono">ID ${item.id}${e.uploaded?' · CUSTOM':''}</div></div></div>`:`<p class="empty-chip">沒有找到包含「${esc(e.search)}」的卡名，可自行上傳一張含字的卡圖。</p>`}
-   <div class="tile-controls"><div class="tile-row"><span class="mini">卡片 ${item?e.chosen+1:0} / ${e.options.length}</span><div class="stepper"><button data-act="prev" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="上一張">◀</button><button data-act="next" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="下一張">下一張 ▶</button><button data-act="more" data-i="${i}" title="搜尋更多卡片">+ 更多</button><label class="upload-label" tabindex="0">上傳<input class="file-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-upload="${i}"></label></div></div>
+   <div class="tile-top"><div class="character">${esc(e.char)}</div><div class="tile-info"><strong>字元 ${String(i+1).padStart(2,'0')}</strong><span>${missing?'找不到直接符合的卡名':`${e.options.length} 個卡名位置可選`}</span></div></div>
+   ${item?`<div class="tile-card">${e.image?`<img class="thumb" src="${esc(e.image.src)}" alt="${esc(item.name)}">`: ''}<div class="card-meta"><div class="source">${esc(editions[item.edition])}</div><div class="name">${esc(item.name)}</div><div class="id mono">ID ${item.id}${e.uploaded?' · CUSTOM':''}</div></div></div>`:`<p class="empty-chip">沒有找到符合條件的「${esc(e.char)}」卡名，可自行上傳一張含字的卡圖。</p>`}
+   <div class="tile-controls"><div class="tile-row"><span class="mini">卡片 ${item?e.chosen+1:0} / ${e.options.length}</span><div class="stepper"><button data-act="prev" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="上一張">◀</button><button data-act="next" data-i="${i}" ${e.options.length<2?'disabled':''} aria-label="下一張">下一張 ▶</button><label class="upload-label" tabindex="0">上傳<input class="file-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-upload="${i}"></label></div></div>
    <div class="offset-row"><span class="mini">裁切位移</span><input type="range" min="-260" max="260" step="1" value="${e.dx}" data-offset="${i}" aria-label="裁切位移"><span class="mini mono">${e.dx>0?'+':''}${e.dx} px</span></div></div>
  </article>`}).join('');
 }
-async function changeCard(i,delta){const e=state.entries[i];if(!e||e.options.length<2)return;e.chosen=(e.chosen+delta+e.options.length)%e.options.length;e.uploaded=null;e.dx=0;e.image=null;renderTiles();await ensureImage(e);renderTiles();await draw()}
-async function moreCards(i){const e=state.entries[i];if(!e||e.space)return;setStatus(`正在擴大搜尋「${e.char}」的候選卡片…`);const before=e.options.length;const found=await searchChar(e.search,true);e.options=found;const after=found.length;if(!current(e)&&after)e.chosen=0;await ensureImage(e);renderTiles();await draw();setStatus(after>before?`「${e.char}」已找到 ${after} 張候選卡片，可以按「下一張」挑選。`:`「${e.char}」目前只找到 ${after} 張候選卡片。`)}
-$('tiles').addEventListener('click',e=>{const btn=e.target.closest('button[data-act]');if(!btn)return;const idx=Number(btn.dataset.i);btn.dataset.act==='more'?moreCards(idx):changeCard(idx,btn.dataset.act==='next'?1:-1)});
+async function changeCard(i,delta){
+ const e=state.entries[i];
+ if(!e||e.options.length<2)return;
+ e.chosen=(e.chosen+delta+e.options.length)%e.options.length;
+ e.uploaded=null;e.dx=0;e.image=null;
+ renderTiles();draw();
+ await ensureImage(e);
+ if(state.entries[i]===e){renderTiles();draw()}
+}
+$('tiles').addEventListener('click',e=>{
+ const btn=e.target.closest('button[data-act]');
+ if(btn)changeCard(Number(btn.dataset.i),btn.dataset.act==='next'?1:-1);
+});
 $('tiles').addEventListener('input',e=>{if(e.target.matches('[data-offset]')){const i=Number(e.target.dataset.offset);state.entries[i].dx=Number(e.target.value);const o=e.target.parentElement.querySelector('span:last-child');o.textContent=`${e.target.value>0?'+':''}${e.target.value} px`;draw()}});
 $('tiles').addEventListener('change',async e=>{
  if(!e.target.matches('[data-upload]'))return;const i=Number(e.target.dataset.upload),file=e.target.files?.[0];if(!file||!file.type.startsWith('image/'))return;
- const dataUrl=URL.createObjectURL(file);
- try{const img=await loadImage(dataUrl);state.entries[i].uploaded=img;state.entries[i].image=img;state.entries[i].imageError=false;renderTiles();await draw();setStatus(`已為「${state.entries[i].char}」套用自選圖片。`)}catch(err){setStatus('無法讀取上傳的圖片。',true)}
+ const entry=state.entries[i],dataUrl=URL.createObjectURL(file);
+ try{const img=await loadImage(dataUrl);if(state.entries[i]!==entry)return;entry.uploaded=img;entry.image=img;renderTiles();draw();setStatus(`已為「${entry.char}」套用自選圖片。`)}catch(err){setStatus('無法讀取上傳的圖片。',true)}
 });
 $('generate').addEventListener('click',generate);$('phrase').addEventListener('input',()=>{$('counter').textContent=`${[...$('phrase').value.trim()].length} / 24`});$('counter').textContent=`${[...$('phrase').value.trim()].length} / 24`;
 $('phrase').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();generate()}});
@@ -239,11 +286,24 @@ document.querySelectorAll('[data-style]').forEach(b=>b.addEventListener('click',
 $('sliceWidth').addEventListener('input',e=>{state.width=Number(e.target.value);$('sliceVal').textContent=state.width+' px';draw()});
 $('zoom').addEventListener('input',e=>{state.scale=Number(e.target.value);$('zoomVal').textContent=state.scale+'×';draw()});
 $('seams').addEventListener('change',e=>{state.seams=e.target.checked;draw()});
-$('avoidRepeat').addEventListener('change',e=>{state.avoidRepeat=e.target.checked});
 $('reset').addEventListener('click',()=>{state.run++;state.entries=[];setBusy(false);setStatus('');renderTiles();draw()});
-$('download').addEventListener('click',()=>{
- const canvas=$('canvas');if(!canvas.width)return;
- try{canvas.toBlob(blob=>{if(!blob){setStatus('匯出失敗：圖片可能不允許跨網域匯出。請下載完整 ZIP 後使用本機啟動器重試。',true);return;}const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`YGO-TYPE_${[...$('phrase').value.trim()].slice(0,12).join('').replace(/[\\/:*?"<>|]/g,'_')||'collage'}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);},'image/png');}catch(err){setStatus('無法匯出：來源圖片限制跨網域使用。請改用 ZIP 內附的本機伺服器啟動。',true)}
+function canvasPNG(){
+ return new Promise((resolve,reject)=>$('canvas').toBlob(blob=>blob?resolve(blob):reject(Error('無法產生 PNG')),'image/png'));
+}
+$('download').addEventListener('click',async()=>{
+ const name=Array.from(state.phrase).slice(0,12).join('').replace(/[\\/:*?"<>|]/g,'_');
+ try{
+   const url=URL.createObjectURL(await canvasPNG());
+   const link=document.createElement('a');
+   link.href=url;link.download=`YGO-TYPE_${name}.png`;link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),30000);
+ }catch{setStatus('無法下載成品圖，請重新拼接後再試。',true)}
+});
+$('copy').addEventListener('click',async()=>{
+ try{
+   await navigator.clipboard.write([new ClipboardItem({'image/png':canvasPNG()})]);
+   setStatus('已複製成品圖，可以貼到支援圖片的應用程式。');
+ }catch{setStatus('無法複製成品圖，請使用「下載 PNG」。',true)}
 });
 </script>
 </body></html>

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Local CORS-safe image/API proxy for the YGO TYPE demo, standard library only."""
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, quote
+from urllib.parse import urlparse, parse_qs
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
-import json, re, time, webbrowser, zipfile, io, threading
+import json, re, sys, time, webbrowser, zipfile, threading
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / '.cache'
@@ -30,6 +30,14 @@ def full_catalog():
             cards=json.loads(z.read('cards.json'))
         _catalog=list(cards.values()) if isinstance(cards,dict) else cards
         return _catalog
+
+@lru_cache(maxsize=1)
+def card_names():
+    return json.dumps([
+        [card['id'], card.get('jp_name'), card.get('sc_name'), card.get('en_name')]
+        for card in full_catalog()
+        if isinstance(card.get('id'), int) and card['id'] > 0
+    ], ensure_ascii=False, separators=(',', ':')).encode('utf-8')
 
 class Handler(BaseHTTPRequestHandler):
     def send(self, status, data, mimetype='application/json; charset=utf-8'):
@@ -59,35 +67,30 @@ class Handler(BaseHTTPRequestHandler):
         path=urlparse(self.path); q=parse_qs(path.query)
         if path.path in ('/','/index.html'):
             return self.send(200,(ROOT/'index.html').read_bytes(),'text/html; charset=utf-8')
-        if path.path=='/api/search':
-            word=q.get('q',[''])[0][:12]
-            try: start=max(0,min(500,int(q.get('start',['0'])[0])))
-            except ValueError: start=0
-            if not word:return self.send(400,b'{"error":"missing query"}')
-            url=f'https://ygocdb.com/api/v0/?search={quote(word)}&start={start}'
-            key=f'search_{word.encode().hex()}_{start}.json'
-            try:return self.send(200,self.get_remote(url,key,12*3600))
-            except Exception as e:return self.send(502,json.dumps({'error':str(e)},ensure_ascii=False).encode())
-        if path.path=='/api/search-all':
-            word=q.get('q',[''])[0][:12]
-            if not word:return self.send(400,b'{"error":"missing query"}')
+        if path.path=='/card-names.json':
             try:
-                cards=full_catalog()
-                results=[c for c in cards if word in (c.get('cn_name') or c.get('sc_name') or '') and isinstance(c.get('id'),int) and c.get('id')>0]
-                results.sort(key=lambda c:(len(c.get('cn_name') or c.get('sc_name') or ''),c.get('id',0)))
-                return self.send(200,json.dumps({'result':results[:150]},ensure_ascii=False).encode('utf-8'))
+                return self.send(200, card_names())
             except Exception as e:
-                return self.send(502,json.dumps({'error':str(e)},ensure_ascii=False).encode('utf-8'))
+                return self.send(502, json.dumps({'error': str(e)}).encode())
         if path.path=='/api/image':
             card_id=q.get('id',[''])[0]
             if not re.fullmatch(r'[0-9]{1,10}',card_id or ''):return self.send(400,b'{"error":"bad card id"}')
+            edition = q.get('edition', ['jp'])[0]
+            if edition not in ('jp', 'sc', 'en'):
+                return self.send(400, b'{"error":"bad edition"}')
             try:
-                data=self.get_remote(f'https://cdn.233.momobako.com/ygopro/pics/{card_id}.jpg',f'image_{card_id}.jpg',90*86400)
-                return self.send(200,data,'image/jpeg')
+                data = self.get_remote(
+                    f'https://cdn.233.momobako.com/ygoimg/{edition}/{card_id}.webp',
+                    f'image_{edition}_{card_id}.webp', 90 * 86400,
+                )
+                return self.send(200, data, 'image/webp')
             except Exception as e:return self.send(502,json.dumps({'error':str(e)},ensure_ascii=False).encode())
         self.send(404,b'Not found','text/plain')
 
 if __name__=='__main__':
+    if len(sys.argv) == 3 and sys.argv[1] == '--build-index':
+        Path(sys.argv[2]).write_bytes(card_names())
+        sys.exit(0)
     print('YGO TYPE 已啟動: http://127.0.0.1:8765')
     print('不需要安裝任何 Python 套件。按 Ctrl+C 關閉。')
     try:

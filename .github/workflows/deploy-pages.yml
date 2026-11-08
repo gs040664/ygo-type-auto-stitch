@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'index.html'
+      - 'server.py'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -31,6 +32,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/index.html
+          python3 server.py --build-index _site/card-names.json
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages
